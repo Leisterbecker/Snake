@@ -1,0 +1,280 @@
+#!/bin/bash
+
+WIDTH=50
+HEIGHT=50
+
+restart="y"
+gameover=0
+
+playerIndex=0
+
+fruitCount=0
+fruitIndex=0
+fruitX=0
+fruitY=0
+
+
+#DRAW FUNCTION GLOBALS
+FRUIT="\e[47m \e[49m"
+PLAYER="\e[45m \e[49m"
+BORDER="\e[43m \e[49m"
+
+DELIM="\n"
+
+E_BORDER=2
+L_BORDER=$(("$E_BORDER" * "${#BORDER}"))
+L_ROW=$((2 * ("$L_BORDER" + "$WIDTH") + 2))
+E_ROW=$(( 2 * ("$E_BORDER" + "$WIDTH") + 2))
+L_DELIM="${#DELIM}"
+L_WHITESPACE=2
+L_TOP_ROW=$(( ( ("$WIDTH" + 2) * "$L_BORDER") + 2))
+
+speed=.2
+
+declare -A playerX
+declare -A playerY
+
+playerX[0]=30
+playerY[0]=30
+size=1
+
+dx=0
+dy=0
+
+collision=0
+input=""
+
+
+function oneDimIndex {
+  RET="$(( ($L_TOP_ROW + $L_BORDER) + $1 * $L_ROW + ($L_WHITESPACE * $2) ))"
+}
+
+
+function createUpperLowerRow {
+  for((i=0; i<$(("$E_ROW" - 1)); i++))
+  do
+    if [ "$i" -lt $(("$E_ROW" - 2)) ]; then
+      UPPER_LOWER_ROW+="$BORDER"
+    else
+      UPPER_LOWER_ROW+="\n"
+    fi
+  done
+}
+
+
+function createInnerRow {
+  for((i=0; i<"$E_BORDER";i++))
+  do
+    INNER_ROW+="$BORDER"
+  done
+  for((i=0; i<$(("$WIDTH" * 2)); i++))
+  do
+    INNER_ROW+=" "
+  done
+  for((i=0; i<$(("E_BORDER"));i++))
+  do
+    INNER_ROW+="$BORDER"
+  done
+  INNER_ROW+="\n"
+}
+
+
+function initDrawBoard {
+  createUpperLowerRow
+  createInnerRow
+  local rows=$(($WIDTH + 2))
+  for((i=0; i<$rows; i++))
+  do
+    if [ "$i" -eq 0 -o "$i" -eq $(($rows - 1)) ]; then
+      board+="$UPPER_LOWER_ROW"
+    else
+      board+="$INNER_ROW"
+    fi
+  done
+}
+
+
+### UPDATE
+function update {
+  getInput
+  movePlayer
+  getCollisions
+  emitFruit
+}
+
+
+function movePlayer {
+  if [ $collision -eq 1 ]; then
+    size=$(($size+1))
+    collision=0
+  fi
+  if [ "$dx" -eq 0 -a "$dy" -eq 0 ]; then
+    sleep .000001
+  else
+    if [ "$size" -gt 1 ]; then
+      for((i="$((size-1))"; i>0; i--))
+      do
+        playerX["$i"]="${playerX[$(($i-1))]}"
+        playerY["$i"]="${playerY[$(($i-1))]}"
+      done
+    fi
+    playerX[0]=$(("${playerX[0]}" + dx))
+    playerY[0]=$(("${playerY[0]}" + dy))
+  fi
+}
+
+
+function getCollisions {
+  if [ "${playerX[0]}" -eq "$fruitX" -a "${playerY[0]}" -eq "$fruitY" ]; then
+    fruitCount=0
+    collision=1
+    increaseSpeed
+  fi
+  if [ "${playerX[0]}" -lt 0 -o "${playerX[0]}" -gt "$WIDTH" ]; then
+    dx=0
+    gameover=1
+  fi
+  if [ "${playerY[0]}" -lt 0 -o "${playerY[0]}" -eq "$WIDTH" ]; then
+    dy=0
+    gameover=1
+  fi
+
+  for((i=1; i<$size; i++))
+  do
+    if [ "${playerX[$i]}" -eq "${playerX[0]}" -a "${playerY[$i]}" -eq "${playerY[0]}" ]; then
+      gameover=1
+    fi 
+  done
+}
+
+
+function increaseSpeed {
+  factor=0.006
+  num=0.0
+  num2=$(echo $speed - $factor | bc -l)
+  if (( $(echo "$num2 > $num" | bc -l) )); then
+    speed=$num2
+  fi 
+}
+
+
+function emitFruit {
+  if [ "$fruitCount" -eq 0 ]; then
+    fruitX=$(($RANDOM % $WIDTH))
+    fruitY=$(($RANDOM % $WIDTH))
+    oneDimIndex $fruitY $fruitX
+    fruitIndex=$RET
+    fruitCount=1
+  fi
+}
+
+
+function getInput {
+  read -s -t 0.0001 -n 1 input
+  if [ "$input" = "a" ]; then
+    if [ $dx -eq 1 ]; then
+      dx=1
+      dy=0
+    else
+      dx=-1
+      dy=0
+    fi
+  elif [ "$input" = "d" ]; then
+    if [ $dx -eq -1 ]; then
+      dx=-1
+      dy=0
+    else
+      dx=1
+      dy=0
+    fi
+  elif [ "$input" = "w" ]; then
+    if [ $dy -eq 1 ]; then
+      dy=1
+      dx=0
+    else
+      dy=-1
+      dx=0
+    fi
+  elif [ "$input" = "s" ]; then
+    if [ $dy -eq -1 ]; then
+      dy=-1
+      dx=0
+    else
+      dy=1
+      dx=0
+    fi
+  fi
+}
+
+
+### DRAW FUNCTIONS
+function draw {
+  echo -ne "\n\e[5m\e[31mloewi_vs_Snake!\e[25m\e[39m\n\n"
+  drawBoard="$board"
+  drawBoard="${drawBoard:0:$((fruitIndex-1))}O${drawBoard:$fruitIndex}"
+  declare -a playerIndices
+
+  for((i=0; i<$size; i++))
+  do
+    oneDimIndex "${playerY[$i]}" "${playerX[$i]}"
+    playerIndices[$i]="$RET"
+  done
+
+  for((i=0; i<$size; i++))
+  do
+    for((j=$(($i+1)); j<$size; j++))
+    do
+      if [ ${playerIndices[$i]} -lt ${playerIndices[$j]} ]; then
+        local tmp=${playerIndices[$i]}
+        playerIndices[$i]=${playerIndices[$j]}
+        playerIndices[$j]=$tmp
+      fi
+    done
+  done
+
+  for((i=0; i<$size; i++))
+  do
+    drawBoard="${drawBoard:0:$((${playerIndices[$i]}-1))}$PLAYER${drawBoard:${playerIndices[$i]}}" 
+  done
+  echo -ne "$drawBoard"
+ }
+
+
+### LOOP
+function run {
+  initDrawBoard
+  while [ "$restart" = "y" ]
+  do
+    echo "Welcome to Snake!"
+    clear
+    while [ "$gameover" -eq 0 -a "$input" != "x" ]
+    do
+      update
+      if [ "$gameover" -eq 1 ]; then
+        break
+      fi
+      draw
+      tput cup 0 0
+      sleep $speed
+    done
+    if [ "$gameover" -ne 0 ]; then
+      echo "Game Over!!!"
+      echo "Restart? y/n?"
+      read -n 1 restart
+      if [ "$restart" = "y" ]; then
+        echo "resetting variables"
+        playerX=$((WIDTH/2))
+        playerY=$((HEIGHT/2))
+        fruitCount=0
+        gameover=0
+        dx=0
+        dy=0
+      fi
+      clear
+    fi
+  done
+  clear
+  echo "Good Bye!"
+}
+
+run
